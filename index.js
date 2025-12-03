@@ -1,7 +1,5 @@
 const WebSocket = require('ws');
 const express = require('express');
-const axios = require('axios');
-const https = require('https');
 
 const app = express();
 const PORT = 5000;
@@ -10,25 +8,6 @@ const PORT = 5000;
 let latestHistoryData = { htr: [] };
 let currentSessionId = 2884086;
 let wsConnection = null;
-let authData = null;
-
-// Hàm lấy thông tin auth từ API
-async function getAuthData() {
-    try {
-        console.log('🔄 Đang lấy thông tin auth từ API...');
-        const response = await axios.get('https://taixiu-database-default-rtdb.firebaseio.com/token.json', {
-            httpsAgent: new https.Agent({ rejectUnauthorized: false })
-        });
-        
-        authData = response.data.data.fullData;
-        console.log('✅ Lấy thông tin auth thành công');
-        console.log(`👤 Username: ${authData[2]}`);
-        return authData;
-    } catch (error) {
-        console.error('❌ Lỗi khi lấy thông tin auth:', error.message);
-        return null;
-    }
-}
 
 // Hàm định dạng dữ liệu xúc xắc
 function formatDiceData(htrData) {
@@ -62,17 +41,10 @@ function formatDiceData(htrData) {
 app.get('/api/his', (req, res) => {
     try {
         const formattedData = formatDiceData(latestHistoryData.htr || []);
-        res.json({
-            success: true,
-            data: formattedData,
-            count: formattedData.length,
-            timestamp: new Date().toISOString()
-        });
+        res.json(formattedData);
     } catch (error) {
         res.status(500).json({
-            success: false,
-            error: error.message,
-            timestamp: new Date().toISOString()
+            error: error.message
         });
     }
 });
@@ -83,7 +55,6 @@ app.get('/api/sun', (req, res) => {
         let formattedData = {};
         
         if (htrData.length > 0) {
-            // Lấy kết quả mới nhất (phần tử cuối cùng trong mảng)
             const latestItem = htrData[htrData.length - 1];
             const d1 = latestItem.d1 || 0;
             const d2 = latestItem.d2 || 0;
@@ -104,15 +75,10 @@ app.get('/api/sun', (req, res) => {
             };
         }
         
-        res.json({
-            success: true,
-            data: formattedData
-        });
+        res.json(formattedData);
     } catch (error) {
         res.status(500).json({
-            success: false,
-            error: error.message,
-            timestamp: new Date().toISOString()
+            error: error.message
         });
     }
 });
@@ -166,34 +132,35 @@ function startKeepAlive(ws) {
     }, 30000); // Mỗi 30 giây
 }
 
+// Cấu hình WebSocket từ dữ liệu bạn cung cấp
+const WEBSOCKET_URL = "wss://websocket.azhkthg1.net/websocket?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhbW91bnQiOjAsInVzZXJuYW1lIjoiU0NfYXBpc3Vud2luMTIzIn0.hgrRbSV6vnBwJMg9ZFtbx3rRu9mX_hZMZ_m5gMNhkw0";
+const WS_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Origin": "https://play.sun.win"
+};
+const RECONNECT_DELAY = 2500;
+const PING_INTERVAL = 15000;
+
+const initialMessages = [
+    [
+        1,
+        "MiniGame",
+        "GM_apivopnha",
+        "WangLin",
+        {
+            "info": "{\"ipAddress\":\"14.249.227.107\",\"wsToken\":\"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJnZW5kZXIiOjAsImNhblZpZXdTdGF0IjpmYWxzZSwiZGlzcGxheU5hbWUiOiI5ODE5YW5zc3MiLCJib3QiOjAsImlzTWVyY2hhbnQiOmZhbHNlLCJ2ZXJpZmllZEJhbmtBY2NvdW50IjpmYWxzZSwicGxheUV2ZW50TG9iYnkiOmZhbHNlLCJjdXN0b21lcklkIjozMjMyODExNTEsImFmZklkIjoic3VuLndpbiIsImJhbm5lZCI6ZmFsc2UsImJyYW5kIjoiZ2VtIiwidGltZXN0YW1wIjoxNzYzMDMyOTI4NzcwLCJsb2NrR2FtZXMiOltdLCJhbW91bnQiOjAsImxvY2tDaGF0IjpmYWxzZSwicGhvbmVWZXJpZmllZCI6ZmFsc2UsImlwQWRkcmVzcyI6IjE0LjI0OS4yMjcuMTA3IiwibXV0ZSI6ZmFsc2UsImF2YXRhciI6Imh0dHBzOi8vaW1hZ2VzLnN3aW5zaG9wLm5ldC9pbWFnZXMvYXZhdGFyL2F2YXRhcl8wNS5wbmciLCJwbGF0Zm9ybUlkIjo0LCJ1c2VySWQiOiI4ODM4NTMzZS1kZTQzLTRiOGQtOTUwMy02MjFmNDA1MDUzNGUiLCJyZWdUaW1lIjoxNzYxNjMyMzAwNTc2LCJwaG9uZSI6IiIsImRlcG9zaXQiOmZhbHNlLCJ1c2VybmFtZSI6IkdNX2FwaXZvcG5oYSJ9.guH6ztJSPXUL1cU8QdMz8O1Sdy_SbxjSM-CDzWPTr-0\",\"locale\":\"vi\",\"userId\":\"8838533e-de43-4b8d-9503-621f4050534e\",\"username\":\"GM_apivopnha\",\"timestamp\":1763032928770,\"refreshToken\":\"e576b43a64e84f789548bfc7c4c8d1e5.7d4244a361e345908af95ee2e8ab2895\"}",
+            "signature": "45EF4B318C883862C36E1B189A1DF5465EBB60CB602BA05FAD8FCBFCD6E0DA8CB3CE65333EDD79A2BB4ABFCE326ED5525C7D971D9DEDB5A17A72764287FFE6F62CBC2DF8A04CD8EFF8D0D5AE27046947ADE45E62E644111EFDE96A74FEC635A97861A425FF2B5732D74F41176703CA10CFEED67D0745FF15EAC1065E1C8BCBFA"
+        }
+    ]
+];
+
 // Hàm kết nối WebSocket
-async function connectWebSocket() {
+function connectWebSocket() {
     try {
-        // Lấy thông tin auth trước khi kết nối
-        if (!authData) {
-            await getAuthData();
-        }
-        
-        if (!authData) {
-            console.log('❌ Không thể lấy thông tin auth, thử lại sau 5 giây...');
-            setTimeout(connectWebSocket, 5000);
-            return;
-        }
-        
-        const token = JSON.parse(authData[4].info).wsToken;
-        const url = `wss://websocket.azhkthg1.net/websocket?token=${token}`;
-        
         console.log('🔌 Đang kết nối WebSocket...');
         
-        const ws = new WebSocket(url, {
-            headers: {
-                "Accept-Encoding": "gzip, deflate, br",
-                "Accept-Language": "vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5",
-                "Cache-Control": "no-cache",
-                "Origin": "https://web.sunwin.vin",
-                "Pragma": "no-cache",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-            },
+        const ws = new WebSocket(WEBSOCKET_URL, {
+            headers: WS_HEADERS,
             rejectUnauthorized: false
         });
         
@@ -202,8 +169,8 @@ async function connectWebSocket() {
         ws.on('open', function open() {
             console.log('### ✅ Kết nối mở thành công ###');
             
-            // Gửi message đầu tiên (auth data từ API)
-            ws.send(JSON.stringify(authData));
+            // Gửi message xác thực đầu tiên
+            ws.send(JSON.stringify(initialMessages[0]));
             console.log('📤 Đã gửi message xác thực');
             
             // Đợi một chút rồi gửi các message tiếp theo
@@ -290,8 +257,8 @@ async function connectWebSocket() {
             console.log('---');
             
             // Thử kết nối lại sau 3 giây
-            console.log('🔄 Thử kết nối lại sau 3 giây...');
-            setTimeout(connectWebSocket, 3000);
+            console.log(`🔄 Thử kết nối lại sau ${RECONNECT_DELAY/1000} giây...`);
+            setTimeout(connectWebSocket, RECONNECT_DELAY);
         });
         
         // Ping để giữ kết nối
@@ -299,7 +266,7 @@ async function connectWebSocket() {
             if (ws.readyState === WebSocket.OPEN) {
                 ws.ping();
             }
-        }, 20000);
+        }, PING_INTERVAL);
         
     } catch (error) {
         console.error('❌ Lỗi kết nối WebSocket:', error.message);
@@ -311,8 +278,8 @@ async function connectWebSocket() {
 // Khởi động server
 app.listen(PORT, () => {
     console.log(`🚀 Server đã khởi động trên port ${PORT}`);
-    console.log(`📊 Truy cập: http://localhost:${PORT}/api/history để xem lịch sử đầy đủ`);
-    console.log(`🌞 Truy cập: http://localhost:${PORT}/api/taixiu để xem kết quả mới nhất`);
+    console.log(`📊 Truy cập: http://localhost:${PORT}/api/his để xem lịch sử đầy đủ`);
+    console.log(`🌞 Truy cập: http://localhost:${PORT}/api/sun để xem kết quả mới nhất`);
     
     // Bắt đầu kết nối WebSocket
     connectWebSocket();
