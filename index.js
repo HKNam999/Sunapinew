@@ -157,7 +157,7 @@ function connectWebSocket() {
                     // Gửi lệnh lấy lịch sử định kỳ để đảm bảo không bị miss
                     sendCmd1005(ws); 
                 }
-            }, 15000);
+            }, 5000);
         });
         
         ws.on('message', function message(data) {
