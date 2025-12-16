@@ -17,6 +17,430 @@ let currentSessionId = 0;
 let wsConnection = null;
 let pingInterval = null;
 
+// Thuật toán Tài Xỉu - Đa Tầng Linh Hoạt
+class ThuatToanTaiXiu {
+    constructor() {
+        this.tenThuatToan = "DA_TANG_LINH_HOAT_V1";
+        this.lichSuDuDoan = [];
+        this.trongSoThuatToan = {
+            batBet: { trongSo: 1.5, hieuSuat: 0.5, soLanSuDung: 0 },
+            beBet: { trongSo: 1.3, hieuSuat: 0.5, soLanSuDung: 0 },
+            giongPhienTruoc: { trongSo: 1.0, hieuSuat: 0.5, soLanSuDung: 0 },
+            xenKeMacDinh: { trongSo: 1.2, hieuSuat: 0.5, soLanSuDung: 0 }
+        };
+        this.cauHinhBeBet = {
+            doNhayThap: 6,
+            doNhayTrungBinh: 8, 
+            doNhayCao: 10,
+            doNhaySieuCao: 12
+        };
+    }
+
+    duDoan(lichSu) {
+        if (!lichSu || lichSu.length < 5) {
+            return this.duDoanKhongDuLieu();
+        }
+
+        // PHÂN TÍCH ĐA TẦNG - KHÔNG MÂU THUẪN
+        const phanTich = {
+            nhanDienCau: this.AI_TranBinh_NhanDien(lichSu), // CHỈ NHẬN DIỆN, KHÔNG ĐOÁN
+            bet: this.AI_BatBet(lichSu),
+            coSo: this.duDoanCoSo(lichSu)
+        };
+
+        // TẠO CÁC PHƯƠNG ÁN DỰ ĐOÁN LINH HOẠT
+        const cacPhuongAn = this.taoPhuongAnLinhHoat(phanTich, lichSu);
+        
+        // CHỌN PHƯƠNG ÁN TỐI ƯU VỚI CHIẾN LƯỢC RÕ RÀNG
+        const ketQua = this.chonPhuongAnToiUu(cacPhuongAn, phanTich, lichSu);
+        
+        // CẬP NHẬT THỐNG KÊ
+        this.capNhatTrongSo(ketQua.loaiThuatToan);
+
+        return ketQua;
+    }
+
+    AI_TranBinh_NhanDien(lichSu) {
+        const lichSuGan = lichSu.slice(0, 8);
+        const ketQua = lichSuGan.map(p => p.ket_qua);
+        const diemSo = lichSuGan.map(p => p.tong);
+
+        const nhanDien = {
+            loaiCau: "chua_ro",
+            doOndinh: this.tinhDoOndinh(ketQua),
+            doManhCuaBet: 0,
+            patternPhatHien: []
+        };
+
+        // NHẬN DIỆN PATTERN (CHỈ ĐỂ PHÂN TÍCH, KHÔNG ĐOÁN)
+        if (this.kiemTraPattern1_1(ketQua)) {
+            nhanDien.patternPhatHien.push("1_1");
+            nhanDien.loaiCau = "xen_ke_1_1";
+        }
+        if (this.kiemTraPattern2_2(ketQua)) {
+            nhanDien.patternPhatHien.push("2_2");
+            nhanDien.loaiCau = "xen_ke_2_2";
+        }
+        if (this.kiemTraPattern1_2_1(ketQua)) {
+            nhanDien.patternPhatHien.push("1_2_1");
+            nhanDien.loaiCau = "xen_ke_1_2_1";
+        }
+        if (this.kiemTraPattern2_1_2(ketQua)) {
+            nhanDien.patternPhatHien.push("2_1_2");
+            nhanDien.loaiCau = "xen_ke_2_1_2";
+        }
+
+        // NHẬN DIỆN BỆT
+        const betAnalysis = this.AI_BatBet(lichSu);
+        if (betAnalysis.coBet) {
+            nhanDien.doManhCuaBet = betAnalysis.doManh;
+            nhanDien.loaiCau = `bet_${betAnalysis.huong.toLowerCase()}`;
+        }
+
+        // NHẬN DIỆN XU HƯỚNG ĐIỂM
+        nhanDien.xuHuongDiem = this.nhanDienXuHuongDiem(diemSo);
+
+        // THÊM: Phân tích xu hướng ngắn hạn
+        nhanDien.xuHuongNganHan = this.phanTichXuHuongNganHan(lichSu.slice(0, 5));
+        
+        return nhanDien;
+    }
+
+    AI_BatBet(lichSu) {
+        const lichSuGan = lichSu.slice(0, 15);
+        let doDai = 1;
+        let ketQuaDau = lichSuGan[0].ket_qua;
+        
+        for (let i = 1; i < lichSuGan.length; i++) {
+            if (lichSuGan[i].ket_qua === ketQuaDau) {
+                doDai++;
+            } else {
+                break;
+            }
+        }
+
+        if (doDai >= 2) {
+            const diemTrungBinh = this.tinhDiemTrungBinhBet(lichSuGan, doDai);
+            const doManh = this.tinhDoManhBet(doDai, diemTrungBinh, ketQuaDau);
+            
+            return {
+                coBet: true,
+                huong: ketQuaDau,
+                doDai: doDai,
+                doManh: doManh,
+                diemTrungBinh: diemTrungBinh
+            };
+        }
+
+        return { coBet: false };
+    }
+
+    taoPhuongAnLinhHoat(phanTich, lichSu) {
+        const cacPhuongAn = [];
+        const { nhanDienCau, bet, coSo } = phanTich;
+
+        // 1. PHƯƠNG ÁN BẮT BỆT - ƯU TIÊN CAO
+        if (bet.coBet) {
+            const diemBatBet = this.tinhDiemBatBet(bet);
+            cacPhuongAn.push({
+                duDoan: bet.huong,
+                diem: diemBatBet,
+                loai: 'batBet',
+                pattern: `bat_bet_${bet.doDai}`,
+                doTinCay: bet.doManh,
+                liDo: `Bắt xu hướng ngắn: Xu hướng ${bet.huong} mạnh (${bet.doDai}/5)`
+            });
+
+            // 2. PHƯƠNG ÁN BẺ BỆT - LINH HOẠT THEO NHẬN DIỆN CẦU
+            if (this.AI_BeBet_LinhHoat(bet, nhanDienCau)) {
+                const diemBeBet = this.tinhDiemBeBet(bet, nhanDienCau);
+                cacPhuongAn.push({
+                    duDoan: bet.huong === "Tài" ? "Xỉu" : "Tài",
+                    diem: diemBeBet,
+                    loai: 'beBet',
+                    pattern: `be_bet_${bet.doDai}`,
+                    doTinCay: 0.7,
+                    liDo: `Bẻ xu hướng ngắn: Bẻ xu hướng ${bet.huong} sau ${bet.doDai}/4 phiên`
+                });
+            }
+        }
+
+        // 3. PHƯƠNG ÁN THEO LOẠI CẦU ĐÃ NHẬN DIỆN
+        const phuongAnTheoCau = this.taoPhuongAnTheoLoaiCau(nhanDienCau, lichSu);
+        if (phuongAnTheoCau) {
+            cacPhuongAn.push(phuongAnTheoCau);
+        }
+
+        // 4. PHƯƠNG ÁN CƠ SỞ - LUÔN CÓ
+        cacPhuongAn.push({
+            duDoan: coSo.duDoan,
+            diem: this.tinhDiemCoSo(coSo),
+            loai: 'giongPhienTruoc',
+            pattern: 'giong_phien_truoc',
+            doTinCay: 0.6,
+            liDo: 'Theo phiên trước'
+        });
+
+        return cacPhuongAn;
+    }
+
+    chonPhuongAnToiUu(cacPhuongAn, phanTich, lichSu) {
+        // Sắp xếp theo điểm
+        cacPhuongAn.sort((a, b) => b.diem - a.diem);
+        const phuongAnTotNhat = cacPhuongAn[0];
+        
+        // Lấy thông tin phiên gần nhất
+        const phienGanNhat = lichSu[0];
+        
+        // Xác định chiến lược đặt cược dựa trên độ tin cậy
+        let chienLuoc = "";
+        if (phuongAnTotNhat.doTinCay >= 0.8) {
+            chienLuoc = "Mạnh - Đặt cược lớn";
+        } else if (phuongAnTotNhat.doTinCay >= 0.6) {
+            chienLuoc = "Trung bình - Đặt cược vừa";
+        } else {
+            chienLuoc = "Yếu - Đặt cược nhỏ";
+        }
+        
+        return {
+            Phien: phienGanNhat.phien + 1, // Dự đoán cho phiên tiếp theo
+            Xuc_xac1: 0,
+            Xuc_xac2: 0,
+            Xuc_xac3: 0,
+            Tong: 0,
+            Ket_qua: "Chưa có",
+            Du_doan: phuongAnTotNhat.duDoan,
+            Li_do: phuongAnTotNhat.liDo || "Không có lý do cụ thể",
+            Do_tin_cay: `${(phuongAnTotNhat.doTinCay * 100).toFixed(1)}%`,
+            Chien_luoc: chienLuoc,
+            pattern: phuongAnTotNhat.pattern,
+            loaiThuatToan: phuongAnTotNhat.loai
+        };
+    }
+
+    // CÁC PHƯƠNG THỨC HỖ TRỢ
+    phanTichXuHuongNganHan(lichSuGan) {
+        if (lichSuGan.length < 5) return {};
+        
+        const ketQua = lichSuGan.slice(0, 5).map(p => p.ket_qua);
+        let taiCount = 0;
+        let xiuCount = 0;
+        
+        ketQua.forEach(kq => {
+            if (kq === "Tài") taiCount++;
+            else xiuCount++;
+        });
+        
+        return {
+            huong: taiCount > xiuCount ? "Tài" : "Xỉu",
+            doManh: Math.max(taiCount, xiuCount) / 5,
+            taiCount,
+            xiuCount
+        };
+    }
+
+    AI_BeBet_LinhHoat(betAnalysis, nhanDienCau) {
+        const { doDai, doManh, huong, diemTrungBinh } = betAnalysis;
+        
+        let nguongBeBet = this.cauHinhBeBet.doNhayTrungBinh;
+
+        if (doManh < 0.6) nguongBeBet = this.cauHinhBeBet.doNhayThap;
+        else if (doManh > 0.8) nguongBeBet = this.cauHinhBeBet.doNhayCao;
+        else if (doManh > 0.9) nguongBeBet = this.cauHinhBeBet.doNhaySieuCao;
+
+        if (nhanDienCau.loaiCau.includes('xen_ke')) {
+            nguongBeBet -= 1;
+        }
+
+        if (nhanDienCau.xuHuongDiem === 'dang_giam' && huong === "Tài") return true;
+        if (nhanDienCau.xuHuongDiem === 'dang_tang' && huong === "Xỉu") return true;
+
+        return doDai >= nguongBeBet;
+    }
+
+    taoPhuongAnTheoLoaiCau(nhanDienCau, lichSu) {
+        const ketQuaGanNhat = lichSu[0].ket_qua;
+
+        switch(nhanDienCau.loaiCau) {
+            case 'xen_ke_1_1':
+                return {
+                    duDoan: ketQuaGanNhat === "Tài" ? "Xỉu" : "Tài",
+                    diem: 75,
+                    loai: 'xenKeMacDinh',
+                    pattern: 'xen_ke_1_1',
+                    doTinCay: 0.8,
+                    liDo: 'Pattern xen kẽ 1-1'
+                };
+                
+            case 'xen_ke_2_2':
+                return {
+                    duDoan: ketQuaGanNhat === "Tài" ? "Xỉu" : "Tài",
+                    diem: 70,
+                    loai: 'xenKeMacDinh',
+                    pattern: 'xen_ke_2_2',
+                    doTinCay: 0.75,
+                    liDo: 'Pattern xen kẽ 2-2'
+                };
+
+            case 'xen_ke_1_2_1':
+                return {
+                    duDoan: "Tài",
+                    diem: 65,
+                    loai: 'xenKeMacDinh',
+                    pattern: 'xen_ke_1_2_1',
+                    doTinCay: 0.7,
+                    liDo: 'Pattern xen kẽ 1-2-1'
+                };
+
+            case 'xen_ke_2_1_2':
+                return {
+                    duDoan: "Xỉu",
+                    diem: 65,
+                    loai: 'xenKeMacDinh',
+                    pattern: 'xen_ke_2_1_2',
+                    doTinCay: 0.7,
+                    liDo: 'Pattern xen kẽ 2-1-2'
+                };
+
+            default:
+                return null;
+        }
+    }
+
+    tinhDoOndinh(ketQua) {
+        if (ketQua.length < 3) return 0.5;
+        let thayDoi = 0;
+        for (let i = 1; i < ketQua.length; i++) {
+            if (ketQua[i] !== ketQua[i-1]) thayDoi++;
+        }
+        const tyLeThayDoi = thayDoi / (ketQua.length - 1);
+        return 1 - Math.abs(tyLeThayDoi - 0.5);
+    }
+
+    nhanDienXuHuongDiem(diemSo) {
+        if (diemSo.length < 3) return 'khong_ro';
+        let tang = 0, giam = 0;
+        for (let i = 0; i < diemSo.length - 1; i++) {
+            if (diemSo[i] < diemSo[i + 1]) tang++;
+            else if (diemSo[i] > diemSo[i + 1]) giam++;
+        }
+        if (tang >= diemSo.length - 2) return 'dang_tang';
+        if (giam >= diemSo.length - 2) return 'dang_giam';
+        return 'on_dinh';
+    }
+
+    kiemTraPattern1_1(ketQua) {
+        if (ketQua.length < 4) return false;
+        for (let i = 0; i < ketQua.length - 1; i++) {
+            if (ketQua[i] === ketQua[i + 1]) return false;
+        }
+        return true;
+    }
+
+    kiemTraPattern2_2(ketQua) {
+        if (ketQua.length < 4) return false;
+        for (let i = 0; i < ketQua.length - 2; i += 2) {
+            if (i + 1 < ketQua.length && ketQua[i] !== ketQua[i + 1]) return false;
+            if (i + 3 < ketQua.length && ketQua[i + 2] !== ketQua[i + 3]) return false;
+        }
+        return true;
+    }
+
+    kiemTraPattern1_2_1(ketQua) {
+        if (ketQua.length < 4) return false;
+        return ketQua[0] !== ketQua[1] && ketQua[1] === ketQua[2] && ketQua[2] !== ketQua[3];
+    }
+
+    kiemTraPattern2_1_2(ketQua) {
+        if (ketQua.length < 5) return false;
+        return ketQua[0] === ketQua[1] && ketQua[1] !== ketQua[2] && ketQua[2] !== ketQua[3] && ketQua[3] === ketQua[4];
+    }
+
+    tinhDiemBatBet(betAnalysis) {
+        const baseScore = betAnalysis.doManh * 80;
+        const trongSo = this.trongSoThuatToan.batBet.trongSo;
+        return baseScore * trongSo;
+    }
+
+    tinhDiemBeBet(betAnalysis, nhanDienCau) {
+        const baseScore = 70;
+        const trongSo = this.trongSoThuatToan.beBet.trongSo;
+        
+        if (nhanDienCau.xuHuongDiem !== 'khong_ro') {
+            return baseScore * trongSo * 1.1;
+        }
+        
+        return baseScore * trongSo;
+    }
+
+    tinhDiemCoSo(coSoAnalysis) {
+        const baseScore = 60;
+        const trongSo = this.trongSoThuatToan.giongPhienTruoc.trongSo;
+        return baseScore * trongSo;
+    }
+
+    duDoanCoSo(lichSu) {
+        return {
+            duDoan: lichSu[0].ket_qua,
+            pattern: "giong_phien_truoc"
+        };
+    }
+
+    capNhatTrongSo(loaiThuatToan) {
+        if (this.trongSoThuatToan[loaiThuatToan]) {
+            this.trongSoThuatToan[loaiThuatToan].soLanSuDung++;
+            this.canBangTrongSo();
+        }
+    }
+
+    canBangTrongSo() {
+        const tongTrongSo = Object.values(this.trongSoThuatToan)
+            .reduce((sum, tt) => sum + tt.trongSo, 0);
+        const trungBinh = tongTrongSo / Object.keys(this.trongSoThuatToan).length;
+        
+        Object.keys(this.trongSoThuatToan).forEach(loai => {
+            const tt = this.trongSoThuatToan[loai];
+            if (tt.trongSo > trungBinh * 1.3) {
+                tt.trongSo *= 0.95;
+            } else if (tt.trongSo < trungBinh * 0.7) {
+                tt.trongSo *= 1.05;
+            }
+        });
+    }
+
+    duDoanKhongDuLieu() {
+        return {
+            Phien: 0,
+            Xuc_xac1: 0,
+            Xuc_xac2: 0,
+            Xuc_xac3: 0,
+            Tong: 0,
+            Ket_qua: "Chưa có",
+            Du_doan: Math.random() > 0.5 ? "Tài" : "Xỉu",
+            Li_do: "Không đủ dữ liệu để phân tích",
+            Do_tin_cay: "10.0%",
+            Chien_luoc: "Không khuyến nghị đặt cược"
+        };
+    }
+
+    tinhDiemTrungBinhBet(lichSu, doDai) {
+        const diemSo = lichSu.slice(0, doDai).map(p => p.tong);
+        return diemSo.reduce((sum, d) => sum + d, 0) / doDai;
+    }
+
+    tinhDoManhBet(doDai, diemTrungBinh, huong) {
+        let doManh = 0.5 + (doDai - 2) * 0.1;
+        if (huong === "Tài" && diemTrungBinh > 13) doManh += 0.2;
+        if (huong === "Xỉu" && diemTrungBinh < 8) doManh += 0.2;
+        if (huong === "Tài" && diemTrungBinh < 11) doManh -= 0.1;
+        if (huong === "Xỉu" && diemTrungBinh > 10) doManh -= 0.1;
+        return Math.min(0.95, Math.max(0.3, doManh));
+    }
+}
+
+// Khởi tạo thuật toán
+const thuatToanTaiXiu = new ThuatToanTaiXiu();
+
 // Hàm định dạng dữ liệu xúc xắc (GIỮ NGUYÊN Y HỆT GỐC)
 function formatDiceData(htrData) {
     const formattedData = [];
@@ -45,7 +469,7 @@ function formatDiceData(htrData) {
     return formattedData;
 }
 
-// === API ROUTES (GIỮ NGUYÊN Y HỆT GỐC) ===
+// === API ROUTES ===
 app.get('/api/his', (req, res) => {
     try {
         const formattedData = formatDiceData(latestHistoryData.htr || []);
@@ -72,8 +496,6 @@ app.get('/api/sun', (req, res) => {
             const total = d1 + d2 + d3;
             const result = total >= 11 ? "Tài" : "Xỉu";
             
-            // Logic tính phiên hiện tại: Phiên cuối cùng trong lịch sử + 1
-            // Hoặc sử dụng currentSessionId nếu nó lớn hơn sid lịch sử (do cập nhật realtime)
             const nextPhien = (currentSessionId > sid) ? currentSessionId : (sid + 1);
 
             formattedData = {
@@ -91,6 +513,74 @@ app.get('/api/sun', (req, res) => {
     } catch (error) {
         res.status(500).json({
             error: error.message
+        });
+    }
+});
+
+// API DỰ ĐOÁN MỚI
+app.get('/api/predic', (req, res) => {
+    try {
+        const htrData = latestHistoryData.htr || [];
+        
+        // Lấy 100 phiên gần nhất
+        const recentData = htrData.slice(-100);
+        
+        // Format dữ liệu cho thuật toán
+        const formattedForPrediction = formatDiceData(recentData);
+        
+        // Lấy thông tin phiên gần nhất
+        const latestItem = recentData[recentData.length - 1];
+        let result = {};
+        
+        if (latestItem && formattedForPrediction.length >= 5) {
+            // Dự đoán
+            result = thuatToanTaiXiu.duDoan(formattedForPrediction);
+            
+            // Thêm thông tin phiên gần nhất
+            const d1 = latestItem.d1 || 0;
+            const d2 = latestItem.d2 || 0;
+            const d3 = latestItem.d3 || 0;
+            const sid = latestItem.sid || 0;
+            const total = d1 + d2 + d3;
+            
+            result.Phien = sid; // Phiên gần nhất
+            result.Xuc_xac1 = d1;
+            result.Xuc_xac2 = d2;
+            result.Xuc_xac3 = d3;
+            result.Tong = total;
+            result.Ket_qua = total >= 11 ? "Tài" : "Xỉu";
+            
+            // Thêm thông tin phiên tiếp theo (phiên dự đoán)
+            result.Phien_du_doan = sid + 1;
+        } else {
+            result = {
+                Phien: 0,
+                Xuc_xac1: 0,
+                Xuc_xac2: 0,
+                Xuc_xac3: 0,
+                Tong: 0,
+                Ket_qua: "Chưa có",
+                Du_doan: "Chưa có",
+                Li_do: "Chưa đủ dữ liệu để dự đoán (cần ít nhất 5 phiên)",
+                Do_tin_cay: "0.0%",
+                Chien_luoc: "Chờ thêm dữ liệu"
+            };
+        }
+        
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({
+            error: error.message,
+            Phien: 0,
+            Xuc_xac1: 0,
+            Xuc_xac2: 0,
+            Xuc_xac3: 0,
+            Tong: 0,
+            Ket_qua: "Lỗi",
+            Du_doan: "Lỗi",
+            Li_do: "Lỗi hệ thống: " + error.message,
+            Do_tin_cay: "0.0%",
+            Chien_luoc: "Lỗi"
         });
     }
 });
@@ -116,7 +606,6 @@ function connectWebSocket() {
     try {
         console.log('🔌 Đang kết nối WebSocket...');
         
-        // Clear interval cũ nếu có
         if (pingInterval) clearInterval(pingInterval);
 
         const ws = new WebSocket(WEBSOCKET_URL, {
@@ -129,7 +618,6 @@ function connectWebSocket() {
         ws.on('open', function open() {
             console.log('### ✅ Kết nối mở thành công ###');
             
-            // 1. Gửi message xác thực
             const authMsg = [
                 1, "MiniGame", "GM_apivopnha", "WangLin",
                 {
@@ -139,7 +627,6 @@ function connectWebSocket() {
             ];
             ws.send(JSON.stringify(authMsg));
             
-            // 2. Gửi các lệnh lấy dữ liệu và vào sảnh
             setTimeout(() => {
                 sendCmd1005(ws);
                 
@@ -150,11 +637,9 @@ function connectWebSocket() {
                 ws.send(JSON.stringify(message10001));
             }, 1000);
 
-            // 3. Setup Keep-Alive (Ping) mỗi 15s để giữ kết nối
             pingInterval = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.ping();
-                    // Gửi lệnh lấy lịch sử định kỳ để đảm bảo không bị miss
                     sendCmd1005(ws); 
                 }
             }, 5000);
@@ -162,24 +647,21 @@ function connectWebSocket() {
         
         ws.on('message', function message(data) {
             try {
-                // Parse dữ liệu JSON an toàn
                 const strData = data.toString();
-                if(strData.length < 5) return; // Bỏ qua tin quá ngắn
+                if(strData.length < 5) return;
 
                 const parsedData = JSON.parse(strData);
                 
-                // Kiểm tra cấu trúc gói tin [Type, Data]
                 if (Array.isArray(parsedData) && parsedData.length >= 2 && parsedData[0] === 5) {
                     const payload = parsedData[1];
                     const cmd = payload.cmd;
 
                     switch (cmd) {
-                        case 1005: // === DỮ LIỆU LỊCH SỬ ===
+                        case 1005:
                             if (payload.htr && Array.isArray(payload.htr)) {
                                 latestHistoryData.htr = payload.htr;
                                 const lastItem = payload.htr[payload.htr.length - 1];
                                 
-                                // Cập nhật session ID từ lịch sử nếu chưa có realtime
                                 if (lastItem.sid >= currentSessionId) {
                                     currentSessionId = lastItem.sid + 1;
                                 }
@@ -187,27 +669,18 @@ function connectWebSocket() {
                             }
                             break;
 
-                        case 1008: // === TRẠNG THÁI PHIÊN HIỆN TẠI (Quan trọng) ===
+                        case 1008:
                             if (payload.sid) {
-                                // Nếu phát hiện phiên mới
                                 if (payload.sid > currentSessionId) {
                                     console.log(`🔄 [PHIÊN MỚI] Đang chạy phiên: #${payload.sid}`);
                                     currentSessionId = payload.sid;
                                     
-                                    // GỌI NGAY lệnh lấy lịch sử để cập nhật kết quả phiên vừa xong
                                     sendCmd1005(ws);
                                 }
                             }
                             break;
 
-                        case 1011: // Chat Message -> Bỏ qua để không spam log
-                            break;
-
-                        case 10000: // Jackpot -> Bỏ qua
-                            break;
-
                         default:
-                            // Các lệnh khác không quan trọng
                             break;
                     }
                 }
@@ -237,8 +710,8 @@ app.listen(PORT, () => {
     console.log(`🚀 Server đã khởi động trên port ${PORT}`);
     console.log(`📊 Truy cập: http://localhost:${PORT}/api/his`);
     console.log(`🌞 Truy cập: http://localhost:${PORT}/api/sun`);
+    console.log(`🔮 Truy cập: http://localhost:${PORT}/api/predic`);
     
-    // Bắt đầu kết nối WebSocket
     connectWebSocket();
 });
 
