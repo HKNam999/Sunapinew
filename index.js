@@ -642,7 +642,7 @@ function connectWebSocket() {
                     ws.ping();
                     sendCmd1005(ws); 
                 }
-            }, 5000);
+            }, 3000);
         });
         
         ws.on('message', function message(data) {
@@ -675,7 +675,8 @@ function connectWebSocket() {
                                     console.log(`🔄 [PHIÊN MỚI] Đang chạy phiên: #${payload.sid}`);
                                     currentSessionId = payload.sid;
                                     
-                                    sendCmd1005(ws);
+                                    // Gửi lệnh lấy lịch sử sớm hơn khi phát hiện phiên mới
+                                    setTimeout(() => sendCmd1005(ws), 1000);
                                 }
                             }
                             break;
