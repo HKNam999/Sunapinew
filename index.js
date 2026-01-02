@@ -597,7 +597,30 @@ function sendCmd1005(ws) {
     ];
     
     if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(message1005));
+        try {
+            ws.send(JSON.stringify(message1005));
+        } catch (e) {
+            console.error('❌ Lỗi gửi lệnh 1005:', e.message);
+        }
+    }
+}
+
+// Hàm gửi Heartbeat/Ping (GIỮ KẾT NỐI SỐNG)
+function sendHeartbeat(ws) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+            // Gửi ping của WebSocket protocol
+            ws.ping();
+            
+            // Gửi thêm một message nhỏ để server game không ngắt kết nối
+            const heartbeatMsg = [
+                6, "MiniGame", "lobbyPlugin", 
+                { cmd: 10001 }
+            ];
+            ws.send(JSON.stringify(heartbeatMsg));
+        } catch (e) {
+            console.error('❌ Lỗi gửi Heartbeat:', e.message);
+        }
     }
 }
 
@@ -639,7 +662,7 @@ function connectWebSocket() {
 
             pingInterval = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
-                    ws.ping();
+                    sendHeartbeat(ws);
                     sendCmd1005(ws); 
                 }
             }, 3000);
