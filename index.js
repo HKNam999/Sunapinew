@@ -718,9 +718,10 @@ function connectWebSocket() {
         });
         
         ws.on('close', function close(code, reason) {
-            console.log(`### 🔌 Kết nối đóng. Code: ${code}, Reason: ${reason || 'Không rõ'}. Reconnect sau 1s... ###`);
+            console.log(`### 🔌 Kết nối đóng. Code: ${code}, Reason: ${reason || 'Không rõ'}. Reconnect ngay lập tức... ###`);
             wsConnection = null;
-            setTimeout(connectWebSocket, 1000);
+            // Kết nối lại ngay lập tức (0ms) thay vì chờ 1s
+            connectWebSocket();
         });
         
     } catch (error) {
