@@ -718,9 +718,9 @@ function connectWebSocket() {
         });
         
         ws.on('close', function close(code, reason) {
-            console.log('### 🔌 Kết nối đóng. Reconnect sau 3s... ###');
+            console.log(`### 🔌 Kết nối đóng. Code: ${code}, Reason: ${reason || 'Không rõ'}. Reconnect sau 1s... ###`);
             wsConnection = null;
-            setTimeout(connectWebSocket, 3000);
+            setTimeout(connectWebSocket, 1000);
         });
         
     } catch (error) {
