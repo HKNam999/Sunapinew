@@ -1,8 +1,39 @@
 const WebSocket = require('ws');
 const express = require('express');
+const http = require('http');
 
 const app = express();
 const PORT = 5000;
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+// Danh sách các client đang kết nối tới Replit server
+const localClients = new Set();
+
+wss.on('connection', (ws) => {
+    localClients.add(ws);
+    console.log('📱 Client mới kết nối vào WebSocket local');
+    
+    // Gửi dữ liệu hiện tại ngay khi client kết nối
+    if (latestHistoryData.htr.length > 0) {
+        ws.send(JSON.stringify({ type: 'history', data: formatDiceData(latestHistoryData.htr) }));
+    }
+
+    ws.on('close', () => {
+        localClients.delete(ws);
+        console.log('📱 Client đã ngắt kết nối WebSocket local');
+    });
+});
+
+// Hàm broadcast dữ liệu tới tất cả client local
+function broadcast(data) {
+    const message = JSON.stringify(data);
+    localClients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
+    });
+}
 
 // === CẤU HÌNH ===
 const WEBSOCKET_URL = "wss://websocket.azhkthg1.net/websocket?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhbW91bnQiOjAsInVzZXJuYW1lIjoiU0NfYXBpc3Vud2luMTIzIn0.hgrRbSV6vnBwJMg9ZFtbx3rRu9mX_hZMZ_m5gMNhkw0";
@@ -688,7 +719,11 @@ function connectWebSocket() {
                                 if (lastItem.sid >= currentSessionId) {
                                     currentSessionId = lastItem.sid + 1;
                                 }
+                                const formatted = formatDiceData(payload.htr);
                                 console.log(`✅ [LỊCH SỬ] Đã cập nhật ${payload.htr.length} phiên. Mới nhất: #${lastItem.sid}`);
+                                
+                                // Broadcast dữ liệu lịch sử mới tới các client đang kết nối
+                                broadcast({ type: 'history', data: formatted });
                             }
                             break;
 
@@ -700,6 +735,9 @@ function connectWebSocket() {
                                     
                                     // Gửi lệnh lấy lịch sử sớm hơn khi phát hiện phiên mới
                                     setTimeout(() => sendCmd1005(ws), 1000);
+
+                                    // Thông báo phiên mới tới client local
+                                    broadcast({ type: 'new_session', data: { sid: payload.sid } });
                                 }
                             }
                             break;
@@ -731,11 +769,12 @@ function connectWebSocket() {
 }
 
 // Khởi động server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`🚀 Server đã khởi động trên port ${PORT}`);
     console.log(`📊 Truy cập: http://localhost:${PORT}/api/his`);
     console.log(`🌞 Truy cập: http://localhost:${PORT}/api/sun`);
     console.log(`🔮 Truy cập: http://localhost:${PORT}/api/predic`);
+    console.log(`📡 WebSocket local: ws://localhost:${PORT}`);
     
     connectWebSocket();
 });
