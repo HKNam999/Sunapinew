@@ -102,6 +102,15 @@ function sendCmd1005(ws) {
     if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(message1005));
         console.log(`🔄 Đã gửi message 1005 - ${new Date().toLocaleTimeString()}`);
+        
+        // Đặt timeout chờ phản hồi cho gói 1005
+        if (ws.cmd1005Timeout) clearTimeout(ws.cmd1005Timeout);
+        ws.cmd1005Timeout = setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                console.log('⚠️ Không nhận được phản hồi 1005 sau 5s, reconnecting immediately...');
+                ws.terminate();
+            }
+        }, 5000); // 5 giây không phản hồi 1005 thì reconnect
     }
 }
 
@@ -220,6 +229,12 @@ async function connectWebSocket() {
                     
                     // Trường hợp 1: Dữ liệu lịch sử từ cmd 1005
                     if (mainData && mainData.htr && Array.isArray(mainData.htr)) {
+                        // Xóa timeout chờ 1005 khi nhận được phản hồi
+                        if (ws.cmd1005Timeout) {
+                            clearTimeout(ws.cmd1005Timeout);
+                            ws.cmd1005Timeout = null;
+                        }
+                        
                         latestHistoryData = { htr: mainData.htr };
                         currentSessionId = mainData.htr[mainData.htr.length - 1].sid;
                         console.log(`🎯 Cập nhật lịch sử từ cmd 1005: ${mainData.htr.length} kết quả`);
@@ -293,6 +308,7 @@ async function connectWebSocket() {
         ws.on('close', (code) => {
             console.log(`### 🔌 Kết nối đóng (${code}) - Reconnecting immediately... ###`);
             if (ws.keepAliveInterval) clearInterval(ws.keepAliveInterval);
+            if (ws.cmd1005Timeout) clearTimeout(ws.cmd1005Timeout);
             // Reconnect ngay lập tức để giữ tính liền mạch
             setTimeout(connectWebSocket, 100);
         });
