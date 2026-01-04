@@ -250,9 +250,12 @@ async function connectWebSocket() {
                             latestHistoryData.htr.push({ d1, d2, d3, sid });
                             currentSessionId = sid;
                             
+                            // Sắp xếp lại lịch sử theo sid để đảm bảo đồng bộ
+                            latestHistoryData.htr.sort((a, b) => a.sid - b.sid);
+                            
                             // Giữ tối đa 100 kết quả
                             if (latestHistoryData.htr.length > 100) {
-                                latestHistoryData.htr.shift();
+                                latestHistoryData.htr = latestHistoryData.htr.slice(-100);
                             }
                         }
                     }
@@ -262,15 +265,21 @@ async function connectWebSocket() {
                         if (mainData.res && Array.isArray(mainData.res)) {
                             const sid = mainData.sid;
                             const d1 = mainData.res[0], d2 = mainData.res[1], d3 = mainData.res[2];
-                            const total = d1 + d2 + d3;
                             const exists = latestHistoryData.htr.some(item => item.sid === sid);
                             if (!exists) {
                                 console.log(`✨ PHÁT HIỆN KẾT QUẢ TRONG CMD ${mainData.cmd || 'UNKNOWN'}: ${sid}`);
                                 latestHistoryData.htr.push({ d1, d2, d3, sid });
                                 currentSessionId = sid;
+                                
+                                // Đồng bộ hóa và sắp xếp
+                                latestHistoryData.htr.sort((a, b) => a.sid - b.sid);
+                                if (latestHistoryData.htr.length > 100) {
+                                    latestHistoryData.htr = latestHistoryData.htr.slice(-100);
+                                }
                             }
                         }
                         
+                        // Đảm bảo currentSessionId luôn là phiên mới nhất
                         if (mainData.sid > currentSessionId) {
                             currentSessionId = mainData.sid;
                         }
