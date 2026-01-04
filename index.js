@@ -110,6 +110,23 @@ function sendCmd1005(ws) {
     }
 }
 
+// Hàm debug cấu trúc dữ liệu
+function debugDataStructure(data) {
+    console.log("=== DEBUG DATA STRUCTURE ===");
+    if (Array.isArray(data)) {
+        console.log(`Data là array với ${data.length} phần tử`);
+        data.forEach((item, index) => {
+            console.log(`  [${index}]: ${typeof item} - ${JSON.stringify(item).substring(0, 100)}...`);
+        });
+    } else if (typeof data === 'object' && data !== null) {
+        console.log(`Data là object với ${Object.keys(data).length} keys`);
+        Object.keys(data).forEach(key => {
+            console.log(`  '${key}': ${typeof data[key]}`);
+        });
+    }
+    console.log("=== END DEBUG ===");
+}
+
 // Hàm bắt đầu keep-alive
 function startKeepAlive(ws) {
     if (ws.keepAliveInterval) clearInterval(ws.keepAliveInterval);
@@ -196,15 +213,34 @@ async function connectWebSocket() {
             ws.lastMessageTime = Date.now();
             try {
                 const parsedData = JSON.parse(data);
+                console.log('📥 Nhận được message:');
+                console.log(data.toString());
+                console.log('---');
+
+                // Debug cấu trúc dữ liệu
+                debugDataStructure(parsedData);
+
                 if (Array.isArray(parsedData) && parsedData.length >= 2 && parsedData[0] === 5) {
                     const mainData = parsedData[1];
                     if (mainData && mainData.htr && Array.isArray(mainData.htr)) {
                         latestHistoryData = { htr: mainData.htr };
                         currentSessionId = mainData.htr[mainData.htr.length - 1].sid;
-                        console.log(`✅ Đã cập nhật lịch sử: Phiên ${currentSessionId}`);
+                        console.log(`🎯 Tìm thấy htr trực tiếp: ${mainData.htr.length} kết quả`);
+                        console.log(`✅ ĐÃ CẬP NHẬT LỊCH SỬ: ${mainData.htr.length} kết quả`);
+                        console.log(`🆔 Phiên hiện tại cập nhật: ${currentSessionId}`);
+                        
+                        console.log('📊 3 kết quả gần nhất (từ mới đến cũ):');
+                        const recentResults = mainData.htr.slice(-3);
+                        for (let i = recentResults.length - 1; i >= 0; i--) {
+                            const item = recentResults[i];
+                            const total = item.d1 + item.d2 + item.d3;
+                            console.log(`  🎲 Phiên ${item.sid}: ${item.d1}+${item.d2}+${item.d3}=${total} (${total >= 11 ? 'Tài' : 'Xỉu'})`);
+                        }
                     }
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error('❌ Lỗi xử lý message:', e.message);
+            }
         });
 
         ws.on('close', (code) => {
