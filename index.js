@@ -62,12 +62,7 @@ function formatDiceData(htrData) {
 app.get('/api/his', (req, res) => {
     try {
         const formattedData = formatDiceData(latestHistoryData.htr || []);
-        res.json({
-            success: true,
-            data: formattedData,
-            count: formattedData.length,
-            timestamp: new Date().toISOString()
-        });
+        res.json(formattedData);
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -95,7 +90,7 @@ app.get('/api/sun', (req, res) => {
                 phien_hien_tai: currentSessionId + 1
             };
         }
-        res.json({ success: true, data: formattedData });
+        res.json(formattedData);
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
