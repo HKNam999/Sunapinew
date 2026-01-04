@@ -4,7 +4,7 @@ const axios = require('axios');
 const https = require('https');
 
 const app = express();
-const PORT = 3001;
+const PORT = 5000;
 
 // Biến toàn cục để lưu trữ dữ liệu
 let latestHistoryData = { htr: [] };
