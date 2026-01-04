@@ -262,14 +262,23 @@ async function connectWebSocket() {
                         }
                     }
 
-                    // Trường hợp 3: Kết quả gửi riêng lẻ (có thể không kèm sid trong cùng object nhưng có dice)
-                    // Một số game gửi kết quả qua cmd: 1001 hoặc 1002 ngay khi có kết quả
-                    else if (mainData && mainData.cmd === 1002 && mainData.sid) {
-                         // Đây là thông báo bắt đầu phiên mới hoặc kết thúc phiên
-                         console.log(`🔔 Thông báo phiên: ${mainData.sid} (cmd: ${mainData.cmd})`);
-                         if (mainData.sid > currentSessionId) {
-                             currentSessionId = mainData.sid - 1; // Cập nhật để suy luận phiên hiện tại chính xác
-                         }
+                    // Trường hợp 3: Kết quả gửi kèm trong cmd 1002 (phiên mới) hoặc các cmd khác
+                    if (mainData && mainData.sid) {
+                        if (mainData.res && Array.isArray(mainData.res)) {
+                            const sid = mainData.sid;
+                            const d1 = mainData.res[0], d2 = mainData.res[1], d3 = mainData.res[2];
+                            const total = d1 + d2 + d3;
+                            const exists = latestHistoryData.htr.some(item => item.sid === sid);
+                            if (!exists) {
+                                console.log(`✨ PHÁT HIỆN KẾT QUẢ TRONG CMD ${mainData.cmd || 'UNKNOWN'}: ${sid}`);
+                                latestHistoryData.htr.push({ d1, d2, d3, sid });
+                                currentSessionId = sid;
+                            }
+                        }
+                        
+                        if (mainData.sid > currentSessionId) {
+                            currentSessionId = mainData.sid;
+                        }
                     }
                 }
             } catch (e) {
@@ -278,14 +287,15 @@ async function connectWebSocket() {
         });
 
         ws.on('close', (code) => {
-            console.log(`### 🔌 Kết nối đóng (${code}) - Thử lại sau 3s ###`);
+            console.log(`### 🔌 Kết nối đóng (${code}) - Reconnecting immediately... ###`);
             if (ws.keepAliveInterval) clearInterval(ws.keepAliveInterval);
-            setTimeout(connectWebSocket, 3000);
+            // Reconnect ngay lập tức để giữ tính liền mạch
+            setTimeout(connectWebSocket, 100);
         });
 
         ws.on('error', (err) => {
             console.error('❌ Lỗi WebSocket:', err.message);
-            ws.terminate();
+            ws.terminate(); // Sẽ kích hoạt sự kiện 'close'
         });
 
     } catch (error) {
