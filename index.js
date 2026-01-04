@@ -261,6 +261,16 @@ async function connectWebSocket() {
                             }
                         }
                     }
+
+                    // Trường hợp 3: Kết quả gửi riêng lẻ (có thể không kèm sid trong cùng object nhưng có dice)
+                    // Một số game gửi kết quả qua cmd: 1001 hoặc 1002 ngay khi có kết quả
+                    else if (mainData && mainData.cmd === 1002 && mainData.sid) {
+                         // Đây là thông báo bắt đầu phiên mới hoặc kết thúc phiên
+                         console.log(`🔔 Thông báo phiên: ${mainData.sid} (cmd: ${mainData.cmd})`);
+                         if (mainData.sid > currentSessionId) {
+                             currentSessionId = mainData.sid - 1; // Cập nhật để suy luận phiên hiện tại chính xác
+                         }
+                    }
                 }
             } catch (e) {
                 console.error('❌ Lỗi xử lý message:', e.message);
