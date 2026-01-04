@@ -222,19 +222,43 @@ async function connectWebSocket() {
 
                 if (Array.isArray(parsedData) && parsedData.length >= 2 && parsedData[0] === 5) {
                     const mainData = parsedData[1];
+                    
+                    // Trường hợp 1: Dữ liệu lịch sử từ cmd 1005
                     if (mainData && mainData.htr && Array.isArray(mainData.htr)) {
                         latestHistoryData = { htr: mainData.htr };
                         currentSessionId = mainData.htr[mainData.htr.length - 1].sid;
-                        console.log(`🎯 Tìm thấy htr trực tiếp: ${mainData.htr.length} kết quả`);
-                        console.log(`✅ ĐÃ CẬP NHẬT LỊCH SỬ: ${mainData.htr.length} kết quả`);
-                        console.log(`🆔 Phiên hiện tại cập nhật: ${currentSessionId}`);
+                        console.log(`🎯 Cập nhật lịch sử từ cmd 1005: ${mainData.htr.length} kết quả`);
                         
-                        console.log('📊 3 kết quả gần nhất (từ mới đến cũ):');
+                        console.log('📊 3 kết quả gần nhất:');
                         const recentResults = mainData.htr.slice(-3);
                         for (let i = recentResults.length - 1; i >= 0; i--) {
                             const item = recentResults[i];
                             const total = item.d1 + item.d2 + item.d3;
                             console.log(`  🎲 Phiên ${item.sid}: ${item.d1}+${item.d2}+${item.d3}=${total} (${total >= 11 ? 'Tài' : 'Xỉu'})`);
+                        }
+                    }
+                    
+                    // Trường hợp 2: Thông báo kết quả phiên mới (thường có sid và res)
+                    else if (mainData && mainData.sid && mainData.res && Array.isArray(mainData.res)) {
+                        const sid = mainData.sid;
+                        const res = mainData.res;
+                        const d1 = res[0], d2 = res[1], d3 = res[2];
+                        const total = d1 + d2 + d3;
+                        
+                        // Kiểm tra xem phiên này đã có trong lịch sử chưa để tránh trùng lặp
+                        const exists = latestHistoryData.htr.some(item => item.sid === sid);
+                        if (!exists) {
+                            console.log(`✨ NHẬN ĐƯỢC KẾT QUẢ PHIÊN MỚI: ${sid}`);
+                            console.log(`🎲 Kết quả: ${d1}+${d2}+${d3}=${total} (${total >= 11 ? 'Tài' : 'Xỉu'})`);
+                            
+                            // Thêm vào lịch sử
+                            latestHistoryData.htr.push({ d1, d2, d3, sid });
+                            currentSessionId = sid;
+                            
+                            // Giữ tối đa 100 kết quả
+                            if (latestHistoryData.htr.length > 100) {
+                                latestHistoryData.htr.shift();
+                            }
                         }
                     }
                 }
