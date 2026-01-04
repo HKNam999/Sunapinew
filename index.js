@@ -309,7 +309,7 @@ async function connectWebSocket() {
 }
 
 // Khởi động server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server đã khởi động trên port ${PORT}`);
     console.log(`📊 Truy cập: http://localhost:${PORT}/api/his để xem lịch sử đầy đủ`);
     console.log(`🌞 Truy cập: http://localhost:${PORT}/api/sun để xem kết quả mới nhất`);
